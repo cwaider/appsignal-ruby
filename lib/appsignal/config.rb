@@ -10,6 +10,14 @@ module Appsignal
   class Config
     include Appsignal::Utils::StdoutAndLoggerMessage
 
+    def self.loader_defaults
+      @loader_defaults ||= {}
+    end
+
+    def self.merge_loader_defaults(options)
+      loader_defaults.merge!(options)
+    end
+
     # @api private
     DEFAULT_CONFIG = {
       :activejob_report_errors => "all",
@@ -163,8 +171,8 @@ module Appsignal
 
     # @api private
     attr_accessor :root_path, :env, :config_hash
-    attr_reader :system_config,
-      :initial_config, :file_config, :env_config, :override_config
+    attr_reader :system_config, :initial_config, :file_config, :env_config,
+      :override_config, :dsl_config
     # @api private
     attr_accessor :logger
 
@@ -208,11 +216,11 @@ module Appsignal
       config_file = nil
     )
       @config_file_error = false
-      @root_path = root_path
       @config_file = config_file
       @logger = logger
       @valid = false
-      @config_hash = DEFAULT_CONFIG.dup
+
+      @root_path = root_path
       env_loaded_from_initial = env.to_s
       @env =
         if ENV.key?("APPSIGNAL_APP_ENV")
@@ -220,29 +228,68 @@ module Appsignal
         else
           env_loaded_from_initial
         end
+      @config_hash = {}
+      @system_config = {}
+      @initial_config = initial_config
+      @initial_config[:root_path] = root_path
+      # Track origin of env
+      @initial_config[:env] = env_loaded_from_initial if env_loaded_from_initial
+      @file_config = {}
+      @env_config = {}
+      # Track origin of env
+      @env_config[:env] = env_loaded_from_env if env_loaded_from_env
+      @override_config = {}
+      @dsl_config = {}
+
+      load_for_env(@env)
+    end
+
+    # TODO: move to private method
+    def load_for_env(selected_env = nil)
+      @env = selected_env if selected_env
+      @config_hash = {}
+      @valid = false
+
+      # Set defaults
+      merge(DEFAULT_CONFIG.transform_values(&:dup))
+
+      # Set defaults from loaders
+      # Move to initializer? Because it modifies the env?
+      loader_defaults = self.class.loader_defaults
+      loader_path = loader_defaults[:root_path]
+      @root_path = loader_path if loader_path
+      loader_env = loader_defaults[:env]
+      @env = loader_env if loader_env
+      merge(loader_defaults)
 
       # Set config based on the system
       @system_config = detect_from_system
       merge(system_config)
+
       # Initial config
       @initial_config = initial_config
       merge(initial_config)
+
       # Load the config file if it exists
-      @file_config = load_from_disk || {}
+      @file_config = load_from_disk(selected_env) || {}
       merge(file_config)
+
       # Load config from environment variables
       @env_config = load_from_environment
       merge(env_config)
+
       # Load config overrides
       @override_config = determine_overrides
       merge(override_config)
+
       # Handle deprecated config options
       maintain_backwards_compatibility
+
+      # Can be set using `Appsignal.configure`
+      @dsl_config = {}
+
       # Validate that we have a correct config
       validate
-      # Track origin of env
-      @initial_config[:env] = env_loaded_from_initial if env_loaded_from_initial
-      @env_config[:env] = env_loaded_from_env if env_loaded_from_env
     end
 
     # @api private
@@ -255,6 +302,7 @@ module Appsignal
       end
     end
 
+    # @api private
     def [](key)
       config_hash[key]
     end
@@ -401,16 +449,16 @@ module Appsignal
       end
     end
 
-    def load_from_disk
+    def load_from_disk(selected_env)
       return if !config_file || !File.exist?(config_file)
 
       read_options = YAML::VERSION >= "4.0.0" ? { :aliases => true } : {}
       configurations = YAML.load(ERB.new(File.read(config_file)).result, **read_options)
-      config_for_this_env = configurations[env]
+      config_for_this_env = configurations[selected_env]
       if config_for_this_env
         config_for_this_env.transform_keys(&:to_sym)
       else
-        logger.error "Not loading from config file: config for '#{env}' not found"
+        logger.error "Not loading from config file: config for '#{selected_env}' not found"
         nil
       end
     rescue => e
@@ -551,58 +599,67 @@ module Appsignal
 
   # @api private
   class ConfigDSL
-    attr_accessor :path, :env
-    attr_reader :options
-
-    def initialize
-      @path = nil
-      @options = {}
+    def initialize(config, env)
+      @config = config
+      @env = env
     end
 
-    def inherit_config(config)
-      @path = config.root_path
-      @env = config.env
-      @options = config.config_hash.clone
+    def app_path=(path)
+      @config.root_path = path
+    end
+
+    def env=(env)
+      @config.env = env
     end
 
     Appsignal::Config::ENV_STRING_KEYS.each_value do |option|
-      define_method option do
-        @options[option]
+      define_method(option) do
+        fetch_option(option)
       end
 
-      define_method "#{option}=" do |value|
-        @options[option] = value.to_s
+      define_method("#{option}=") do |value|
+        update_option(option, value.to_s)
       end
     end
 
     Appsignal::Config::ENV_BOOLEAN_KEYS.each_value do |option|
-      define_method option do
-        @options[option]
+      define_method(option) do
+        fetch_option(option)
       end
 
-      define_method "#{option}=" do |value|
-        @options[option] = value
+      define_method("#{option}=") do |value|
+        update_option(option, value)
       end
     end
 
     Appsignal::Config::ENV_ARRAY_KEYS.each_value do |option|
-      define_method option do
-        @options[option]
+      define_method(option) do
+        fetch_option(option)
       end
 
-      define_method "#{option}=" do |value|
-        @options[option] = value
+      define_method("#{option}=") do |value|
+        update_option(option, value)
       end
     end
 
     Appsignal::Config::ENV_FLOAT_KEYS.each_value do |option|
-      define_method option do
-        @options[option]
+      define_method(option) do
+        fetch_option(option)
       end
 
-      define_method "#{option}=" do |value|
-        @options[option] = value.to_f
+      define_method("#{option}=") do |value|
+        update_option(option, value.to_f)
       end
+    end
+
+    private
+
+    def fetch_option(key)
+      @config.dsl_config.fetch(key, @config[key].dup)
+    end
+
+    def update_option(key, value)
+      @config.dsl_config[key] = value
     end
   end
 end

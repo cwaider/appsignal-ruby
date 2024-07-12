@@ -161,23 +161,29 @@ module Appsignal
       Appsignal::Probes.stop
     end
 
-    def configure
+    def load(integration_name)
+      Loaders.load(integration_name)
+    end
+
+    def configure(env = nil)
+      return if Appsignal.active?
       return unless block_given?
 
-      unless config
+      # TODO: maybe this is easier: rebuild the config if another env is loaded
+      # rather than try and merge/update the two
+      if config && config.env == env
+        config
+      else
         self.config = Config.new(
           Dir.pwd,
-          ENV["APPSIGNAL_APP_ENV"] || ENV["RAILS_ENV"] || ENV.fetch("RACK_ENV", nil)
+          env || ENV["APPSIGNAL_APP_ENV"] || ENV["RAILS_ENV"] || ENV.fetch("RACK_ENV", nil)
         )
       end
 
-      config_dsl = ConfigDSL.new
-      config_dsl.inherit_config(config) if config
+      config_dsl = ConfigDSL.new(config, env)
       yield config_dsl
+      config.validate
 
-      config.root_path = config_dsl.path if config_dsl.path
-      config.env = config_dsl.env if config_dsl.env
-      config.config_hash = config_dsl.options
       @reconfigured = true
     end
 
@@ -340,6 +346,7 @@ module Appsignal
   end
 end
 
+require "appsignal/loaders"
 require "appsignal/environment"
 require "appsignal/system"
 require "appsignal/utils"

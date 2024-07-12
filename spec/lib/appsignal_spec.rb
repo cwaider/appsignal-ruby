@@ -21,42 +21,69 @@ describe Appsignal do
   end
 
   describe ".configure" do
-    it "loads the config default in the DSL" do
-      Appsignal.configure do |config|
-        Appsignal::Config::DEFAULT_CONFIG.each do |option, value|
-          expect(config.send(option)).to eq(value)
-        end
+    before do
+      Appsignal.config = nil
+    end
+
+    context "with AppSignal active" do
+      it "doesn't update the config" do
+        start_agent
+        called = false
+        expect do
+          Appsignal.configure do |_config|
+            called = true
+          end
+        end.to_not(change { [Appsignal.config, Appsignal.active?] })
+        expect(called).to be(false)
       end
     end
 
-    it "configures AppSignal and updates the extension config" do
-      Appsignal.configure do |config|
-        config.env = :production
-        config.path = "/tmp"
-        config.sidekiq_report_errors = :all
-      end
-
-      expect(Appsignal.config.root_path).to eq("/tmp")
-      expect(Appsignal.config[:sidekiq_report_errors]).to eq("all")
-    end
-
-    it "returns the default config value for an option if unset" do
-      Appsignal.configure do |config|
-        expect(config.sidekiq_report_errors)
-          .to eq(Appsignal::Config::DEFAULT_CONFIG[:sidekiq_report_errors])
-      end
-    end
-
-    it "allows modification of previously unset config options" do
-      expect do
+    context "with AppSignal not active" do
+      it "loads the config default" do
         Appsignal.configure do |config|
-          config.ignore_actions << "My action"
-          config.request_headers << "My allowed header"
+          Appsignal::Config::DEFAULT_CONFIG.each do |option, value|
+            expect(config.send(option)).to eq(value)
+          end
         end
-      end.to_not(change { Appsignal::Config::DEFAULT_CONFIG })
-      expect(Appsignal.config[:ignore_actions]).to eq(["My action"])
-      expect(Appsignal.config[:request_headers])
-        .to eq(Appsignal::Config::DEFAULT_CONFIG[:request_headers] + ["My allowed header"])
+      end
+
+      it "loads the config from the YAML file" do
+        Appsignal.configure do |config|
+          Appsignal::Config::DEFAULT_CONFIG.each do |option, value|
+            expect(config.send(option)).to eq(value)
+          end
+        end
+      end
+
+      it "configures AppSignal and updates the extension config" do
+        Appsignal.configure do |config|
+          config.env = :production
+          config.app_path = "/tmp"
+          config.sidekiq_report_errors = :all
+        end
+
+        expect(Appsignal.config.root_path).to eq("/tmp")
+        expect(Appsignal.config[:sidekiq_report_errors]).to eq("all")
+      end
+
+      it "returns the default config value for an option if unset" do
+        Appsignal.configure do |config|
+          expect(config.sidekiq_report_errors)
+            .to eq(Appsignal::Config::DEFAULT_CONFIG[:sidekiq_report_errors])
+        end
+      end
+
+      it "allows modification of previously unset config options" do
+        expect do
+          Appsignal.configure do |config|
+            config.ignore_actions << "My action"
+            config.request_headers << "My allowed header"
+          end
+        end.to_not(change { Appsignal::Config::DEFAULT_CONFIG })
+        expect(Appsignal.config[:ignore_actions]).to eq(["My action"])
+        expect(Appsignal.config[:request_headers])
+          .to eq(Appsignal::Config::DEFAULT_CONFIG[:request_headers] + ["My allowed header"])
+      end
     end
   end
 
