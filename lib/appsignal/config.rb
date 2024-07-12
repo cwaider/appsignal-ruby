@@ -162,7 +162,8 @@ module Appsignal
     #   @return [Hash]
 
     # @api private
-    attr_reader :root_path, :env, :config_hash, :system_config,
+    attr_accessor :root_path, :env, :config_hash
+    attr_reader :system_config,
       :initial_config, :file_config, :env_config, :override_config
     # @api private
     attr_accessor :logger
@@ -545,6 +546,63 @@ module Appsignal
     def inactive_on_config_file_error?
       value = ENV.fetch("APPSIGNAL_INACTIVE_ON_CONFIG_FILE_ERROR", false)
       ["1", "true"].include?(value)
+    end
+  end
+
+  # @api private
+  class ConfigDSL
+    attr_accessor :path, :env
+    attr_reader :options
+
+    def initialize
+      @path = nil
+      @options = {}
+    end
+
+    def inherit_config(config)
+      @path = config.root_path
+      @env = config.env
+      @options = config.config_hash.clone
+    end
+
+    Appsignal::Config::ENV_STRING_KEYS.each_value do |option|
+      define_method option do
+        @options[option]
+      end
+
+      define_method "#{option}=" do |value|
+        @options[option] = value.to_s
+      end
+    end
+
+    Appsignal::Config::ENV_BOOLEAN_KEYS.each_value do |option|
+      define_method option do
+        @options[option]
+      end
+
+      define_method "#{option}=" do |value|
+        @options[option] = value
+      end
+    end
+
+    Appsignal::Config::ENV_ARRAY_KEYS.each_value do |option|
+      define_method option do
+        @options[option]
+      end
+
+      define_method "#{option}=" do |value|
+        @options[option] = value
+      end
+    end
+
+    Appsignal::Config::ENV_FLOAT_KEYS.each_value do |option|
+      define_method option do
+        @options[option]
+      end
+
+      define_method "#{option}=" do |value|
+        @options[option] = value.to_f
+      end
     end
   end
 end

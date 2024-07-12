@@ -10,22 +10,39 @@ module Appsignal
     # @api private
     class Railtie < ::Rails::Railtie
       initializer "appsignal.configure_rails_initialization" do |app|
-        Appsignal::Integrations::Railtie.initialize_appsignal(app)
+        Appsignal::Integrations::Railtie.integrate_appsignal(app)
+        if app.config.appsignal.start_at == :on_load
+          Appsignal::Integrations::Railtie.initialize_appsignal
+        end
+      end
+
+      config.appsignal = ActiveSupport::OrderedOptions.new
+      config.appsignal.start_at ||= :on_load
+
+      config.after_initialize do |app|
+        if app.config.appsignal.start_at == :after_initialize
+          Appsignal::Integrations::Railtie.initialize_appsignal
+        end
       end
 
       console do
         Appsignal::Probes.stop
       end
 
-      def self.initialize_appsignal(app)
-        # Load config
-        Appsignal.config = Appsignal::Config.new(
-          Rails.root,
-          Rails.env,
-          :name => Appsignal::Utils::RailsHelper.detected_rails_app_name,
-          :log_path => Rails.root.join("log")
-        )
+      def self.initialize_appsignal
+        unless Appsignal.config
+          Appsignal.config = Appsignal::Config.new(
+            Rails.root,
+            Rails.env,
+            :name => Appsignal::Utils::RailsHelper.detected_rails_app_name,
+            :log_path => Rails.root.join("log")
+          )
+        end
+        Appsignal.start
+        initialize_error_reporter
+      end
 
+      def self.integrate_appsignal(app)
         app.middleware.insert(
           0,
           ::Rack::Events,
@@ -35,10 +52,6 @@ module Appsignal
           ActionDispatch::DebugExceptions,
           Appsignal::Rack::RailsInstrumentation
         )
-
-        Appsignal.start
-
-        initialize_error_reporter
       end
 
       def self.initialize_error_reporter

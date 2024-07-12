@@ -105,6 +105,12 @@ module Appsignal
         ENV["APPSIGNAL_APP_ENV"] || ENV["RAILS_ENV"] || ENV.fetch("RACK_ENV", nil)
       )
 
+      if active? && @reconfigured
+        puts "TODO: warning: "
+        stop("Reconfiguring via Appsignal.configure")
+        @reconfigured = false
+      end
+
       _start_logger
 
       if config.valid?
@@ -147,12 +153,32 @@ module Appsignal
     # @since 1.0.0
     def stop(called_by = nil)
       if called_by
-        internal_logger.debug("Stopping appsignal (#{called_by})")
+        internal_logger.debug("Stopping AppSignal (#{called_by})")
       else
-        internal_logger.debug("Stopping appsignal")
+        internal_logger.debug("Stopping AppSignal")
       end
       Appsignal::Extension.stop
       Appsignal::Probes.stop
+    end
+
+    def configure
+      return unless block_given?
+
+      unless config
+        self.config = Config.new(
+          Dir.pwd,
+          ENV["APPSIGNAL_APP_ENV"] || ENV["RAILS_ENV"] || ENV.fetch("RACK_ENV", nil)
+        )
+      end
+
+      config_dsl = ConfigDSL.new
+      config_dsl.inherit_config(config) if config
+      yield config_dsl
+
+      config.root_path = config_dsl.path if config_dsl.path
+      config.env = config_dsl.env if config_dsl.env
+      config.config_hash = config_dsl.options
+      @reconfigured = true
     end
 
     def forked
