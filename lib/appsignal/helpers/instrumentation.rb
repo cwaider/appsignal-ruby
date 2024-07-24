@@ -711,6 +711,38 @@ module Appsignal
         transaction.set_headers(headers, &block)
       end
 
+      # Add request headers to the current transaction.
+      #
+      # @example Append request headers
+      #   Appsignal.add_headers(
+      #     "PATH_INFO" => "/some-path",
+      #   )
+      #
+      # @example Calling `add_headers` multiple times merge the values
+      #   Appsignal.add_headers("PATH_INFO" => "/some-path")
+      #   Appsignal.add_headers("HTTP_USER_AGENT" => "Firefox")
+      #   # The request headers are:
+      #   # { "PATH_INFO" => "/some-path", "HTTP_USER_AGENT" => "Firefox" }
+      #
+      # @since 4.0.0
+      # @param headers [Hash] The request headers to add to the transaction.
+      # @yield This block is called when the transaction is sampled. The block's
+      #   return value will become the new request headers.
+      # @see https://docs.appsignal.com/guides/custom-data/sample-data.html
+      #   Sample data guide
+      # @see https://docs.appsignal.com/guides/filter-data/filter-headers.html
+      #   Request headers filtering guide
+      # @see #set_headers
+      # @see Transaction#set_headers
+      # @return [void]
+      def add_headers(headers = nil, &block)
+        return unless active?
+        return unless Appsignal::Transaction.current?
+
+        transaction = Appsignal::Transaction.current
+        transaction.add_headers(headers, &block)
+      end
+
       # Add breadcrumbs to the transaction.
       #
       # Breadcrumbs can be used to trace what path a user has taken

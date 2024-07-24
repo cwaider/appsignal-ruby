@@ -108,7 +108,7 @@ module Appsignal
       @store = Hash.new({})
       @params = nil
       @session_data = nil
-      @headers = nil
+      @headers = Appsignal::SampleData.new
 
       @ext = Appsignal::Extension.start_transaction(
         @transaction_id,
@@ -278,8 +278,22 @@ module Appsignal
     # @see https://docs.appsignal.com/guides/custom-data/sample-data.html
     #   Sample data guide
     def set_headers(given_headers = nil, &block)
-      @headers = block if block
-      @headers = given_headers if given_headers
+      @headers.set(given_headers, &block)
+    end
+
+    # Add headers to the transaction.
+    #
+    # @param given_headers [Hash] A hash containing headers.
+    # @yield This block is called when the transaction is sampled. The block's
+    #   return value will become the new headers.
+    # @return [void]
+    #
+    # @since 4.0.0
+    # @see Helpers::Instrumentation#add_headers
+    # @see https://docs.appsignal.com/guides/custom-data/sample-data.html
+    #   Sample data guide
+    def add_headers(given_headers = nil, &block)
+      @headers.add(given_headers, &block)
     end
 
     # Set headers on the transaction if not already set.
@@ -298,7 +312,7 @@ module Appsignal
     # @see https://docs.appsignal.com/guides/custom-data/sample-data.html
     #   Sample data guide
     def set_headers_if_nil(given_headers = nil, &block)
-      set_headers(given_headers, &block) unless @headers
+      set_headers(given_headers, &block) unless @headers.value?
     end
 
     # Set custom data on the transaction.
@@ -646,11 +660,7 @@ module Appsignal
     end
 
     def request_headers
-      if @headers.respond_to? :call
-        @headers.call
-      else
-        @headers
-      end
+      @headers.value
     rescue => e
       Appsignal.internal_logger.error \
         "Exception while fetching headers: #{e.class}: #{e}"

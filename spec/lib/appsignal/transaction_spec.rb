@@ -564,7 +564,7 @@ describe Appsignal::Transaction do
         transaction.set_headers(arg_data) { block_data }
 
         transaction._sample
-        expect(transaction).to include_environment(arg_data)
+        expect(transaction).to include_environment(block_data)
       end
 
       context "with request_headers options" do
@@ -627,7 +627,7 @@ describe Appsignal::Transaction do
         transaction.set_headers_if_nil(arg_data) { block_data }
 
         transaction._sample
-        expect(transaction).to include_environment(arg_data)
+        expect(transaction).to include_environment(block_data)
       end
 
       context "when the given params is nil" do

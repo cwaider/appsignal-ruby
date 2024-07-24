@@ -425,6 +425,7 @@ module Appsignal
 end
 
 require "appsignal/loaders"
+require "appsignal/sample_data"
 require "appsignal/environment"
 require "appsignal/system"
 require "appsignal/utils"
